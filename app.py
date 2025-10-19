@@ -1,8 +1,9 @@
-from flask import Flask, Response, render_template_string, request
+from flask import Flask, Response, render_template_string, request, redirect
 import requests, re, time
 from collections import deque
 
 app = Flask(__name__)
+
 RAW_LUA_URL = "https://raw.githubusercontent.com/SkibidiHub111/Ghoul/refs/heads/main/Ghoul"
 
 WINDOW = 60
@@ -12,15 +13,20 @@ visitors, blocked = {}, {}
 
 def is_blocked(ip):
     t = blocked.get(ip)
-    if t and time.time() < t: return True
-    if t and time.time() >= t: del blocked[ip]
+    if t and time.time() < t:
+        return True
+    if t and time.time() >= t:
+        del blocked[ip]
     return False
 
 def record(ip):
     now = time.time()
     dq = visitors.get(ip)
-    if not dq: dq = deque(); visitors[ip] = dq
-    while dq and dq[0] < now - WINDOW: dq.popleft()
+    if not dq:
+        dq = deque()
+        visitors[ip] = dq
+    while dq and dq[0] < now - WINDOW:
+        dq.popleft()
     dq.append(now)
     if len(dq) > MAX_PER_WINDOW:
         blocked[ip] = now + BLOCK_TIME
@@ -60,23 +66,31 @@ span{font-size:26px;margin:0 6px;}
 @app.route("/")
 def index():
     ip = request.remote_addr or "unknown"
-    if is_blocked(ip): return Response("Too many requests", status=429)
-    if not record(ip): return Response("Too many requests", status=429)
+    if is_blocked(ip):
+        return Response("Too many requests", status=429)
+    if not record(ip):
+        return Response("Too many requests", status=429)
+    user_agent = (request.headers.get("User-Agent") or "").lower()
+    if "mozilla" not in user_agent:
+        return redirect("/raw.lua")
     return render_template_string(HTML)
 
 @app.route("/raw.lua")
 def raw():
     ip = request.remote_addr or "unknown"
-    if is_blocked(ip): return Response("Too many requests", status=429)
-    if not record(ip): return Response("Too many requests", status=429)
+    if is_blocked(ip):
+        return Response("Too many requests", status=429)
+    if not record(ip):
+        return Response("Too many requests", status=429)
     try:
         r = requests.get(RAW_LUA_URL, timeout=8)
-        if r.status_code != 200: return Response("Error tải Lua", status=502)
+        if r.status_code != 200:
+            return Response("Error tải Lua", status=502)
         txt = r.text
         txt = re.sub(r"--[^\n]*", "", txt)
         txt = re.sub(r"--\[\[[\s\S]*?\]\]", "", txt)
         txt = "\n".join(x for x in txt.splitlines() if x.strip() != "")
-        return Response(txt, mimetype="text/plain")
+        return Response(txt, mimetype="text/plain", headers={"Access-Control-Allow-Origin": "*"})
     except Exception:
         return Response("Error tải file", status=500)
 
